@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YubiKey PGP Key Import</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:        #0d0f14;
+    --surface:   #13161e;
+    --border:    #1e2330;
+    --border-hi: #2e3450;
+    --text:      #c8cedd;
+    --text-dim:  #5a6178;
+    --text-hi:   #eef0f6;
+    --green:     #3dffa0;
+    --green-dim: #1a5c3f;
+    --amber:     #ffb830;
+    --amber-dim: #4a3200;
+    --red:       #ff4d6a;
+    --red-dim:   #4a0f18;
+    --blue:      #5b8fff;
+    --blue-dim:  #0f1f4a;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  /* ── Header ──────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 22px 32px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+
+  .logo {
+    width: 32px; height: 32px;
+    background: var(--green);
+    border-radius: 6px;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+  }
+
+  .logo svg { width: 18px; height: 18px; }
+
+  header h1 {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-hi);
+    letter-spacing: 0.05em;
+  }
+
+  header h1 span { color: var(--green); }
+
+  .status-pill {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border-hi);
+    background: var(--surface);
+    transition: all .3s;
+  }
+
+  .status-pill .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: background .3s;
+  }
+
+  .status-pill.connected .dot   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-pill.connected        { border-color: var(--green-dim); color: var(--green); }
+  .status-pill.error .dot       { background: var(--red); }
+  .status-pill.error            { border-color: var(--red-dim); color: var(--red); }
+  .status-pill.working .dot     { background: var(--amber); animation: pulse 1s infinite; }
+  .status-pill.working          { border-color: var(--amber-dim); color: var(--amber); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── Layout ──────────────────────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 32px 0;
+    min-height: calc(100vh - 80px);
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────── */
+  .sidebar {
+    padding-right: 32px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  /* ── Connect block ───────────────────────────────────── */
+  .connect-block {
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border-radius: 6px;
+    border: 1px solid var(--border-hi);
+    background: transparent;
+    color: var(--text-hi);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: var(--border); }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
+
+  .btn.primary {
+    background: var(--green);
+    border-color: var(--green);
+    color: #000;
+    font-weight: 600;
+  }
+  .btn.primary:hover { background: #5fffc0; }
+
+  .btn.danger {
+    border-color: var(--red-dim);
+    color: var(--red);
+  }
+  .btn.danger:hover { background: var(--red-dim); }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+  /* ── Card info ───────────────────────────────────────── */
+  .card-info {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .card-info.visible { display: flex; }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .info-label { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+
+  .info-value {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    text-align: right;
+    word-break: break-all;
+  }
+
+  /* ── Steps nav ───────────────────────────────────────── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background .15s;
+    border: 1px solid transparent;
+  }
+
+  .step-item:hover { background: var(--surface); }
+  .step-item.active { background: var(--surface); border-color: var(--border-hi); }
+
+  .step-num {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--border-hi);
+    color: var(--text-dim);
+    flex-shrink: 0;
+    transition: all .2s;
+  }
+
+  .step-item.active .step-num { border-color: var(--green); color: var(--green); }
+  .step-item.done .step-num   { background: var(--green); border-color: var(--green); color: #000; }
+
+  .step-info {}
+  .step-title { font-size: 13px; color: var(--text-hi); font-weight: 500; }
+  .step-desc  { font-size: 11px; color: var(--text-dim); }
+
+  /* ── Main panel ──────────────────────────────────────── */
+  .main {
+    padding-left: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .panel { display: none; }
+  .panel.active { display: flex; flex-direction: column; gap: 20px; }
+
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-hi);
+    margin-bottom: 4px;
+  }
+
+  .panel-sub { font-size: 13px; color: var(--text-dim); }
+
+  /* ── Form elements ───────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+
+  label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  label .optional {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  select,
+  textarea {
+    background: var(--surface);
+    border: 1px solid var(--border-hi);
+    border-radius: 6px;
+    color: var(--text-hi);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color .15s;
+    width: 100%;
+  }
+
+  input:focus, select:focus, textarea:focus { border-color: var(--green); }
+
+  textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+
+  select option { background: var(--surface); }
+
+  .field-hint { font-size: 11px; color: var(--text-dim); }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* ── Key slot cards ──────────────────────────────────── */
+  .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+  .slot-card {
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    cursor: pointer;
+    transition: all .15s;
+    position: relative;
+  }
+
+  .slot-card:hover { border-color: var(--border-hi); }
+  .slot-card.selected { border-color: var(--green); background: #0a1a12; }
+
+  .slot-card input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+
+  .slot-icon {
+    font-size: 22px;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .slot-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-hi);
+    margin-bottom: 3px;
+  }
+
+  .slot-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+
+  .slot-tag {
+    display: inline-block;
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--border);
+    color: var(--text-dim);
+  }
+
+  .slot-card.selected .slot-tag { background: var(--green-dim); color: var(--green); }
+
+  /* ── Algo tabs ───────────────────────────────────────── */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    gap: 0;
+    margin-bottom: 20px;
+  }
+
+  .tab-btn {
+    padding: 9px 18px;
+    font-family: var(--mono);
+    font-size: 12px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all .15s;
+    margin-bottom: -1px;
+  }
+
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── PIN section ─────────────────────────────────────── */
+  .pin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .pin-strength {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+    margin-top: 6px;
+    overflow: hidden;
+  }
+
+  .pin-strength-bar {
+    height: 100%;
+    border-radius: 2px;
+    width: 0%;
+    transition: width .3s, background .3s;
+  }
+
+  /* ── Progress / log ──────────────────────────────────── */
+  .progress-block {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .progress-header {
+    padding: 12px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .log-output {
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.8;
+    max-height: 280px;
+    overflow-y: auto;
+    background: #080b10;
+  }
+
+  .log-line { display: flex; gap: 12px; }
+  .log-time { color: var(--text-dim); flex-shrink: 0; }
+  .log-msg  { }
+  .log-ok   { color: var(--green); }
+  .log-err  { color: var(--red); }
+  .log-warn { color: var(--amber); }
+  .log-info { color: var(--blue); }
+
+  /* ── Alert boxes ─────────────────────────────────────── */
+  .alert {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 7px;
+    font-size: 12px;
+    line-height: 1.5;
+    border: 1px solid;
+  }
+
+  .alert-warn  { background: var(--amber-dim); border-color: #6a4400; color: var(--amber); }
+  .alert-error { background: var(--red-dim);   border-color: #8a1020; color: var(--red); }
+  .alert-ok    { background: var(--green-dim); border-color: #1a5c3f; color: var(--green); }
+  .alert-info  { background: var(--blue-dim);  border-color: #1a2f7a; color: var(--blue); }
+
+  .alert svg { flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Fingerprint display ─────────────────────────────── */
+  .fingerprint-display {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .05em;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--green);
+    word-spacing: .3em;
+    line-height: 1.8;
+  }
+
+  /* ── Summary card ────────────────────────────────────── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .summary-item {
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+
+  .summary-item-label { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+  .summary-item-value { font-family: var(--mono); font-size: 13px; color: var(--text-hi); }
+
+  /* ── Misc ────────────────────────────────────────────── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  .text-green { color: var(--green); }
+  .text-red   { color: var(--red); }
+  .text-amber { color: var(--amber); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--text-hi);
+  }
+
+  .big-check {
+    text-align: center;
+    padding: 40px;
+    font-size: 56px;
+  }
+
+  .success-title {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--green);
+    text-align: center;
+    margin-bottom: 6px;
+  }
+
+  .success-sub {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 18 18" fill="none">
+      <rect x="2" y="8" width="14" height="8" rx="2" fill="#000" stroke="#000"/>
+      <path d="M5 8V5.5a4 4 0 0 1 8 0V8" stroke="#000" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="9" cy="12" r="1.5" fill="#3dffa0"/>
+    </svg>
+  </div>
+  <h1>YubiKey <span>PGP</span> Key Import</h1>
+  <div class="status-pill" id="statusPill">
+    <div class="dot"></div>
+    <span id="statusText">No device</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+
+    <div class="connect-block">
+      <div class="section-label">Device</div>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn primary" id="btnConnect" onclick="connectDevice()">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1v4M7 9v4M1 7h4M9 7h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          Connect YubiKey
+        </button>
+        <button class="btn danger" id="btnDisconnect" style="display:none" onclick="disconnectDevice()">Disconnect</button>
+      </div>
+      <div class="card-info" id="cardInfo">
+        <div class="info-row">
+          <span class="info-label">Device</span>
+          <span class="info-value" id="infoDevice">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Serial</span>
+          <span class="info-value" id="infoSerial">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Firmware</span>
+          <span class="info-value" id="infoFirmware">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">OpenPGP</span>
+          <span class="info-value" id="infoApplet">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Import Steps</div>
+      <div class="steps">
+        <div class="step-item active" id="nav-0" onclick="goStep(0)">
+          <div class="step-num" id="stepnum-0">1</div>
+          <div class="step-info">
+            <div class="step-title">Key Slot</div>
+            <div class="step-desc">Select signature, decrypt, or auth</div>
+          </div>
+        </div>
+        <div class="step-item" id="nav-1" onclick="goStep(1)">
+          <div class="step-num" id="stepnum-1">2</div>
+          <div class="step-info">
+            <div class="step-title">Algorithm</div>
+            <div class="step-desc">RSA or elliptic curve</div>
+          </div>
+        </div>
+        <div class="step-item" id="nav-2" onclick="goStep(2)">
+          <div class="step-num" id="stepnum-2">3</div>
+          <div class="step-info">
+            <div class="step-title">Key Material</div>
+            <div class="step-desc">Paste PEM or provide components</div>
+          </div>
+        </div>
+        <div class="step-item" id="nav-3" onclick="goStep(3)">
+          <div class="step-num" id="stepnum-3">4</div>
+          <div class="step-info">
+            <div class="step-title">PIN & Metadata</div>
+            <div class="step-desc">Admin PIN, fingerprint, timestamp</div>
+          </div>
+        </div>
+        <div class="step-item" id="nav-4" onclick="goStep(4)">
+          <div class="step-num" id="stepnum-4">5</div>
+          <div class="step-info">
+            <div class="step-title">Review & Import</div>
+            <div class="step-desc">Verify and write to device</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto">
+      <div class="alert alert-warn" style="font-size:11px">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;margin-top:1px">
+          <path d="M7 1L13 12H1L7 1Z" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M7 5v3M7 10v.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <span>Requires Chrome/Edge 89+. WebUSB must be enabled. Use HTTPS or localhost.</span>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+
+    <!-- Step 0: Key slot -->
+    <div class="panel active" id="panel-0">
+      <div>
+        <div class="panel-title">Select Key Slot</div>
+        <div class="panel-sub">Each YubiKey has three independent OpenPGP key slots.</div>
+      </div>
+      <div class="slot-grid">
+        <label class="slot-card selected" id="slot-sign" onclick="selectSlot('sign',this)">
+          <input type="radio" name="slot" value="sign" checked>
+          <span class="slot-icon">✍️</span>
+          <div class="slot-name">Signature</div>
+          <div class="slot-desc">Signs emails, commits, documents</div>
+          <span class="slot-tag">CRT B6</span>
+        </label>
+        <label class="slot-card" id="slot-decrypt" onclick="selectSlot('decrypt',this)">
+          <input type="radio" name="slot" value="decrypt">
+          <span class="slot-icon">🔓</span>
+          <div class="slot-name">Decryption</div>
+          <div class="slot-desc">Decrypts messages and files</div>
+          <span class="slot-tag">CRT B8</span>
+        </label>
+        <label class="slot-card" id="slot-auth" onclick="selectSlot('auth',this)">
+          <input type="radio" name="slot" value="auth">
+          <span class="slot-icon">🔑</span>
+          <div class="slot-name">Authentication</div>
+          <div class="slot-desc">SSH login and challenge-response</div>
+          <span class="slot-tag">CRT A4</span>
+        </label>
+      </div>
+      <div class="alert alert-info" style="font-size:12px">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;margin-top:1px">
+          <circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M7 6v4M7 4v.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <span>Importing a key <strong>overwrites</strong> any existing key in that slot. This cannot be undone.</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" onclick="goStep(1)">Next: Algorithm →</button>
+      </div>
+    </div>
+
+    <!-- Step 1: Algorithm -->
+    <div class="panel" id="panel-1">
+      <div>
+        <div class="panel-title">Algorithm & Key Size</div>
+        <div class="panel-sub">Configure the algorithm attributes that will be written to the card before import.</div>
+      </div>
+      <div class="tabs" id="algoTabs">
+        <button class="tab-btn active" onclick="switchAlgo('rsa',this)">RSA</button>
+        <button class="tab-btn" onclick="switchAlgo('ec',this)">Elliptic Curve</button>
+      </div>
+
+      <!-- RSA -->
+      <div class="tab-content active" id="algo-rsa">
+        <div class="field">
+          <label>Key Size</label>
+          <select id="rsaBits">
+            <option value="2048">2048 bits (minimum recommended)</option>
+            <option value="3072">3072 bits</option>
+            <option value="4096" selected>4096 bits (strongest)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Import Format</label>
+          <select id="rsaFormat">
+            <option value="0">Standard (n, e, d)</option>
+            <option value="2" selected>CRT (p, q, PQ, DP1, DQ1)</option>
+            <option value="3">CRT + modulus</option>
+          </select>
+          <div class="field-hint">CRT format is faster for decryption. Most tools export CRT by default.</div>
+        </div>
+      </div>
+
+      <!-- EC -->
+      <div class="tab-content" id="algo-ec">
+        <div class="field">
+          <label>Curve</label>
+          <select id="ecCurve">
+            <option value="nistp256">NIST P-256 (secp256r1)</option>
+            <option value="nistp384" selected>NIST P-384 (secp384r1)</option>
+            <option value="nistp521">NIST P-521 (secp521r1)</option>
+            <option value="ed25519">Ed25519 (sign/auth only)</option>
+            <option value="x25519">X25519 / Curve25519 (decrypt only)</option>
+          </select>
+        </div>
+        <div class="alert alert-warn" style="font-size:11px">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1L13 12H1L7 1Z" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M7 5v3M7 10v.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          Ed25519 requires YubiKey firmware 5.2.3+. NIST curves work on all YubiKey 5 series.
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" onclick="goStep(0)">← Back</button>
+        <button class="btn primary" onclick="goStep(2)">Next: Key Material →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Key material -->
+    <div class="panel" id="panel-2">
+      <div>
+        <div class="panel-title">Key Material</div>
+        <div class="panel-sub">Paste your private key in PEM format, or provide raw hex components.</div>
+      </div>
+
+      <div class="tabs" id="keyInputTabs">
+        <button class="tab-btn active" onclick="switchKeyInput('pem',this)">PEM (Recommended)</button>
+        <button class="tab-btn" onclick="switchKeyInput('hex',this)">Raw Hex Components</button>
+      </div>
+
+      <!-- PEM input -->
+      <div class="tab-content active" id="keyinput-pem">
+        <div class="field">
+          <label>Private Key PEM</label>
+          <textarea id="pemInput" placeholder="-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEA...
+-----END RSA PRIVATE KEY-----
+
+Supports: PKCS#1 RSA, PKCS#8, SEC1 EC keys.
+Passphrase-encrypted keys are not yet supported." spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label>Passphrase <span class="optional">optional</span></label>
+          <input type="password" id="pemPassphrase" placeholder="Leave blank if key is unencrypted">
+        </div>
+        <div id="pemParseResult"></div>
+      </div>
+
+      <!-- Raw hex input -->
+      <div class="tab-content" id="keyinput-hex">
+        <div class="alert alert-info" style="font-size:11px">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M7 6v4M7 4v.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          Enter each component as a hex string (spaces OK). Lengths must match your chosen key size.
+        </div>
+        <div id="hexFields">
+          <!-- Populated by JS based on algo selection -->
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" onclick="goStep(1)">← Back</button>
+        <button class="btn primary" onclick="validateKeyAndNext()">Next: PIN & Metadata →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: PIN & metadata -->
+    <div class="panel" id="panel-3">
+      <div>
+        <div class="panel-title">PIN & Metadata</div>
+        <div class="panel-sub">Enter the admin PIN and optional key metadata to write to the card.</div>
+      </div>
+
+      <div class="field">
+        <label>Admin PIN (PW3)</label>
+        <input type="password" id="adminPin" placeholder="Default: 12345678" maxlength="127"
+          oninput="updatePinStrength(this,'adminPinStrength')">
+        <div class="pin-strength"><div class="pin-strength-bar" id="adminPinStrength"></div></div>
+        <div class="field-hint">Default admin PIN is <code>12345678</code>. Required to write keys and metadata.</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="field">
+        <label>Key Fingerprint <span class="optional">optional</span></label>
+        <input type="text" id="keyFingerprint" placeholder="40-char hex: A1B2C3D4... (without spaces)"
+          maxlength="40" style="font-family:var(--mono)">
+        <div class="field-hint">SHA-1 fingerprint of the public key. Written as metadata to the card. Computed automatically if you have the full key.</div>
+      </div>
+
+      <div class="field">
+        <label>Key Creation Date <span class="optional">optional</span></label>
+        <input type="text" id="keyTimestamp" placeholder="ISO 8601: 2024-01-15T12:00:00Z"
+          value="">
+        <div class="field-hint">Written as a Unix timestamp to the card. Used by GnuPG to reconstruct key IDs.</div>
+      </div>
+
+      <div class="field">
+        <label>Cardholder Name <span class="optional">optional</span></label>
+        <input type="text" id="cardholderName" placeholder="Surname&lt;&lt;GivenName (ISO 7501 format)">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" onclick="goStep(2)">← Back</button>
+        <button class="btn primary" onclick="goStep(4)">Next: Review →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Review & import -->
+    <div class="panel" id="panel-4">
+      <div>
+        <div class="panel-title">Review & Import</div>
+        <div class="panel-sub">Verify all settings before writing to the YubiKey.</div>
+      </div>
+
+      <div class="summary-grid" id="summaryGrid">
+        <!-- populated by JS -->
+      </div>
+
+      <div class="field">
+        <label>Key Fingerprint Preview</label>
+        <div class="fingerprint-display" id="fingerprintPreview">Not yet computed</div>
+      </div>
+
+      <div class="progress-block">
+        <div class="progress-header">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M6 3v3l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          Import Log
+        </div>
+        <div class="log-output" id="logOutput">
+          <div class="log-line">
+            <span class="log-time log-info">——</span>
+            <span class="log-msg">Waiting to start...</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="importResult"></div>
+
+      <div class="btn-row">
+        <button class="btn" onclick="goStep(3)" id="btnBack4">← Back</button>
+        <button class="btn primary" id="btnImport" onclick="runImport()">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1v8M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 11h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          Import Key to YubiKey
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 5: Success -->
+    <div class="panel" id="panel-5">
+      <div class="big-check">✅</div>
+      <div class="success-title">Key imported successfully</div>
+      <div class="success-sub">The private key is now stored on your YubiKey and will never leave it.</div>
+      <div class="fingerprint-display" id="successFingerprint" style="margin:0 auto;max-width:500px"></div>
+      <div class="btn-row" style="justify-content:center;margin-top:16px">
+        <button class="btn" onclick="location.reload()">Import Another Key</button>
+        <button class="btn primary" onclick="exportPublicKey()">Export Public Key PEM</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script type="module">
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline minimal version of the APDU library (self-contained, no import needed)
+// For production, import from yubikey-openpgp-apdu.js instead.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const YUBICO_VENDOR_ID = 0x1050;
+const OPENPGP_AID = new Uint8Array([0xD2, 0x76, 0x00, 0x01, 0x24, 0x01]);
+
+const KEY_SLOT_MAP = { sign: 0xB6, decrypt: 0xB8, auth: 0xA4 };
+
+function hexToBytes(hex) {
+  const clean = hex.replace(/\s+/g, '');
+  const arr = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < arr.length; i++) arr[i] = parseInt(clean.slice(i*2,i*2+2),16);
+  return arr;
+}
+
+function bytesToHex(bytes, sep=' ') {
+  return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0').toUpperCase()).join(sep);
+}
+
+function concat(...arrays) {
+  const total = arrays.reduce((n,a)=>n+a.length,0);
+  const out = new Uint8Array(total); let off=0;
+  for (const a of arrays) { out.set(a,off); off+=a.length; }
+  return out;
+}
+
+function berLen(n) {
+  if (n < 0x80) return new Uint8Array([n]);
+  if (n < 0x100) return new Uint8Array([0x81,n]);
+  return new Uint8Array([0x82,(n>>8)&0xFF,n&0xFF]);
+}
+
+function tlv(tag, val) {
+  const t = tag>0xFF ? new Uint8Array([(tag>>8)&0xFF,tag&0xFF]) : new Uint8Array([tag&0xFF]);
+  return concat(t, berLen(val.length), val);
+}
+
+function parseTLV(data) {
+  const map = new Map(); let i=0;
+  while (i < data.length) {
+    let tag = data[i++];
+    if ((tag&0x1F)===0x1F) tag=(tag<<8)|data[i++];
+    if (i>=data.length) break;
+    let len;
+    if (data[i]<0x80) { len=data[i++]; }
+    else if (data[i]===0x81) { len=data[++i]; i++; }
+    else if (data[i]===0x82) { len=(data[i+1]<<8)|data[i+2]; i+=3; }
+    else break;
+    map.set(tag, data.slice(i,i+len)); i+=len;
+  }
+  return map;
+}
+
+function buildAPDU(cla,ins,p1,p2,data=null,le=true) {
+  const parts=[new Uint8Array([cla,ins,p1,p2])];
+  if (data?.length) {
+    if (data.length>255) parts.push(new Uint8Array([0x00,(data.length>>8)&0xFF,data.length&0xFF]));
+    else parts.push(new Uint8Array([data.length]));
+    parts.push(data);
+  }
+  if (le) parts.push(new Uint8Array([0x00]));
+  return concat(...parts);
+}
+
+// ── CCID Transport ────────────────────────────────────────────────────────────
+class CCIDTransport {
+  constructor(device) { this.device=device; this.seq=0; this.epIn=null; this.epOut=null; }
+
+  async open() {
+    await this.device.open();
+    let iface=null;
+    for (const cfg of this.device.configurations)
+      for (const i of cfg.interfaces)
+        for (const alt of i.alternates)
+          if (alt.interfaceClass===0x0B) { iface=i; break; }
+    if (!iface) iface=this.device.configurations[0].interfaces[0];
+    await this.device.claimInterface(iface.interfaceNumber);
+    for (const ep of iface.alternates[0].endpoints) {
+      if (ep.direction==='in')  this.epIn  = ep.endpointNumber;
+      if (ep.direction==='out') this.epOut = ep.endpointNumber;
+    }
+    if (!this.epIn||!this.epOut) throw new Error('No CCID endpoints found');
+  }
+
+  async close() { try { await this.device.close(); } catch(_){} }
+
+  async transmit(apdu) {
+    const seq=this.seq++&0xFF, len=apdu.length;
+    const pkt=new Uint8Array(10+len);
+    pkt[0]=0x6F; pkt[1]=len&0xFF; pkt[2]=(len>>8)&0xFF;
+    pkt[3]=(len>>16)&0xFF; pkt[4]=(len>>24)&0xFF;
+    pkt[5]=0; pkt[6]=seq; pkt[7]=0; pkt[8]=0; pkt[9]=0;
+    pkt.set(apdu,10);
+    await this.device.transferOut(this.epOut, pkt);
+    let resp=new Uint8Array(0);
+    while (true) {
+      const r=await this.device.transferIn(this.epIn,65536);
+      const chunk=new Uint8Array(r.data.buffer);
+      resp=concat(resp,chunk);
+      if (resp.length>=10) {
+        const expLen=resp[1]|(resp[2]<<8)|(resp[3]<<16)|(resp[4]<<24);
+        if (resp.length>=10+expLen) break;
+      }
+    }
+    if (resp[0]!==0x80) throw new Error(`CCID type: 0x${resp[0].toString(16)}`);
+    if (resp[7]&0x40) throw new Error(`CCID error bStatus=0x${resp[7].toString(16)}`);
+    return resp.slice(10);
+  }
+}
+
+// ── OpenPGP Card Driver ───────────────────────────────────────────────────────
+class OpenPGPCard {
+  constructor() { this.transport=null; this.device=null; }
+
+  async connect() {
+    this.device = await navigator.usb.requestDevice({ filters:[{vendorId:YUBICO_VENDOR_ID}] });
+    this.transport = new CCIDTransport(this.device);
+    await this.transport.open();
+  }
+
+  async disconnect() {
+    if (this.transport) await this.transport.close();
+    this.transport=null; this.device=null;
+  }
+
+  async send(cla,ins,p1,p2,data=null,le=true) {
+    const apdu=buildAPDU(cla,ins,p1,p2,data,le);
+    let resp=await this.transport.transmit(apdu);
+    let allData=resp.slice(0,resp.length-2);
+    let sw1=resp[resp.length-2], sw2=resp[resp.length-1];
+    while (sw1===0x61) {
+      const more=await this.transport.transmit(buildAPDU(0x00,0xC0,0x00,0x00,null,true));
+      allData=concat(allData,more.slice(0,more.length-2));
+      sw1=more[more.length-2]; sw2=more[more.length-1];
+    }
+    const sw=(sw1<<8)|sw2;
+    if (sw!==0x9000) {
+      const e=new Error(`SW=${sw.toString(16).toUpperCase().padStart(4,'0')}`);
+      e.sw=sw; e.sw1=sw1; e.sw2=sw2;
+      if (sw1===0x63) e.remainingTries=sw2&0x0F;
+      throw e;
+    }
+    return allData;
+  }
+
+  async selectApplet() {
+    return this.send(0x00,0xA4,0x04,0x00,OPENPGP_AID);
+  }
+
+  async getData(tag) {
+    return this.send(0x00,0xCA,(tag>>8)&0xFF,tag&0xFF);
+  }
+
+  async putData(tag, val) {
+    return this.send(0x00,0xDA,(tag>>8)&0xFF,tag&0xFF,val,false);
+  }
+
+  async verifyPIN(pin, type='admin') {
+    const p2 = type==='admin' ? 0x83 : 0x82;
+    return this.send(0x00,0x20,0x00,p2,new TextEncoder().encode(pin),false);
+  }
+
+  async setAlgorithmAttrs(slot, attrs) {
+    const tagMap={0xB6:0x00C1,0xB8:0x00C2,0xA4:0x00C3};
+    return this.putData(tagMap[slot], attrs);
+  }
+
+  async importKey(slot, keyMaterial) {
+    const {template,keyData}=keyMaterial;
+    const body=concat(tlv(0x7F48,template),tlv(0x5F48,keyData));
+    const ehl=tlv(0x4D,concat(new Uint8Array([slot,0x00]),body));
+    return this.send(0x00,0xDB,0x3F,0xFF,ehl,false);
+  }
+
+  async setFingerprint(slot, fp) {
+    const tagMap={0xB6:0x00C7,0xB8:0x00C8,0xA4:0x00C9};
+    return this.putData(tagMap[slot], fp);
+  }
+
+  async setTimestamp(slot, date) {
+    const tagMap={0xB6:0x00CD,0xB8:0x00CE,0xA4:0x00CF};
+    const epoch=Math.floor(date.getTime()/1000);
+    const b=new Uint8Array(4);
+    new DataView(b.buffer).setUint32(0,epoch,false);
+    return this.putData(tagMap[slot], b);
+  }
+
+  async setCardholderName(name) {
+    return this.putData(0x005B, new TextEncoder().encode(name));
+  }
+
+  async getPublicKey(slot) {
+    const crt=new Uint8Array([slot,0x00]);
+    return this.send(0x00,0x47,0x81,0x00,crt);
+  }
+
+  async getAppRelatedData() {
+    const raw=await this.getData(0x006E);
+    const outer=parseTLV(raw);
+    return parseTLV(outer.get(0x6E)||raw);
+  }
+}
+
+// ── RSA helpers ───────────────────────────────────────────────────────────────
+
+function buildRSAAlgoAttrs(bits=4096, elen=17, fmt=2) {
+  return new Uint8Array([0x01,(bits>>8)&0xFF,bits&0xFF,0x00,elen,fmt]);
+}
+
+/**
+ * Parse an RSA private key from a DER-encoded structure.
+ * Supports PKCS#1 RSAPrivateKey (sequence with version=0).
+ * Returns {n,e,d,p,q,dp,dq,qinv} as Uint8Arrays.
+ */
+function parseRSADER(der) {
+  // Minimal ASN.1 DER parser - just enough for RSAPrivateKey
+  function readLen(buf, off) {
+    if (buf[off]<0x80) return {len:buf[off],end:off+1};
+    const nb=buf[off]&0x7F; let l=0;
+    for (let i=0;i<nb;i++) l=(l<<8)|buf[off+1+i];
+    return {len:l,end:off+1+nb};
+  }
+  function readTLV(buf, off) {
+    const tag=buf[off]; off++;
+    const {len,end}=readLen(buf,off); off=end;
+    return {tag,value:buf.slice(off,off+len),next:off+len};
+  }
+  // Outer SEQUENCE
+  let pos=0;
+  if (der[pos]!==0x30) throw new Error('Expected SEQUENCE');
+  const {end:seqEnd}=readLen(der,1); pos=seqEnd+1;
+  // Skip version INTEGER (0)
+  let {next}=readTLV(der,pos); pos=next;
+  // Read 8 integers: n,e,d,p,q,dp,dq,qinv
+  const names=['n','e','d','p','q','dp','dq','qinv'];
+  const result={};
+  for (const name of names) {
+    const {value,next:nx}=readTLV(der,pos); pos=nx;
+    // Strip leading 0x00 byte if present (sign byte for positive integers)
+    result[name] = value[0]===0x00 ? value.slice(1) : value;
+  }
+  return result;
+}
+
+function buildRSAKeyMaterial(key, fmt=2) {
+  // CRT format (fmt=2): e, p, q, PQ=q^-1 mod p, DP1=d mod(p-1), DQ1=d mod(q-1)
+  // We assume the PEM parsing already gave us these values
+  const {e,p,q,dp,dq,qinv,n}=key;
+  const components = [[0x91,e],[0x92,p],[0x93,q],[0x94,qinv],[0x95,dp],[0x96,dq]];
+  if (fmt===3 && n) components.push([0x97,n]);
+  const template=concat(...components.map(([t,v])=>concat(new Uint8Array([t]),berLen(v.length))));
+  const keyData=concat(...components.map(([,v])=>v));
+  return {template,keyData};
+}
+
+// ── PEM parsing ───────────────────────────────────────────────────────────────
+
+function pemToDER(pem) {
+  const lines=pem.trim().split('\n').filter(l=>!l.startsWith('-----'));
+  return Uint8Array.from(atob(lines.join('')), c=>c.charCodeAt(0));
+}
+
+function parsePKCS8RSA(der) {
+  // PKCS#8: SEQUENCE { SEQUENCE { OID rsaEncryption, NULL }, BIT STRING { PKCS#1 } }
+  // Just find the inner PKCS#1 sequence
+  function findSeq(buf, off) {
+    while (off<buf.length) {
+      if (buf[off]===0x30) return off;
+      off++;
+    }
+    return -1;
+  }
+  // Skip outer SEQUENCE header + AlgorithmIdentifier SEQUENCE
+  let pos=0;
+  // outer SEQUENCE
+  if (der[0]!==0x30) throw new Error('Not a SEQUENCE');
+  function skipLen(buf,off){ if(buf[off]<0x80){return{len:buf[off],end:off+1};} const nb=buf[off]&0x7F; let l=0; for(let i=0;i<nb;i++)l=(l<<8)|buf[off+1+i]; return{len:l,end:off+1+nb}; }
+  pos=1; const{end:e1}=skipLen(der,pos); pos=e1;
+  // skip version if present (INTEGER 0)
+  if (der[pos]===0x02) { pos++; const{len,end}=skipLen(der,pos); pos=end+len; }
+  // skip AlgorithmIdentifier SEQUENCE
+  if (der[pos]===0x30) { pos++; const{len,end}=skipLen(der,pos); pos=end+len; }
+  // OCTET STRING containing PKCS#1
+  if (der[pos]===0x04) { pos++; const{end}=skipLen(der,pos); pos=end; }
+  // Now at PKCS#1 SEQUENCE
+  return parseRSADER(der.slice(pos));
+}
+
+function tryParsePEM(pem) {
+  const header = pem.match(/-----BEGIN (.+?)-----/)?.[1];
+  if (!header) throw new Error('Not a valid PEM block');
+  const der = pemToDER(pem);
+  if (header.includes('RSA PRIVATE KEY')) {
+    return { algo: 'rsa', key: parseRSADER(der) };
+  } else if (header.includes('PRIVATE KEY')) {
+    // PKCS#8 — detect algo from OID
+    // RSA OID: 1.2.840.113549.1.1.1 = 2A 86 48 86 F7 0D 01 01 01
+    const rsaOid = '2a864886f70d010101';
+    const hex = bytesToHex(der,'');
+    if (hex.toLowerCase().includes(rsaOid)) {
+      return { algo: 'rsa', key: parsePKCS8RSA(der) };
+    }
+    throw new Error('PKCS#8 EC keys not yet supported in browser import; use RSA or convert first');
+  } else if (header.includes('EC PRIVATE KEY')) {
+    throw new Error('SEC1 EC format: extract scalar manually. Use openssl pkcs8 -topk8 first.');
+  }
+  throw new Error(`Unknown PEM type: ${header}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI state
+// ─────────────────────────────────────────────────────────────────────────────
+
+const state = {
+  card: new OpenPGPCard(),
+  connected: false,
+  currentStep: 0,
+  doneSteps: new Set(),
+  slot: 'sign',
+  algo: 'rsa',
+  rsaBits: 4096,
+  ecCurve: 'nistp384',
+  parsedKey: null,
+  keyInputMode: 'pem',
+};
+
+// ── Connect / disconnect ──────────────────────────────────────────────────────
+
+window.connectDevice = async function() {
+  if (!navigator.usb) {
+    setStatus('error','WebUSB not supported — use Chrome or Edge');
+    return;
+  }
+  setStatus('working','Connecting…');
+  try {
+    await state.card.connect();
+    await state.card.selectApplet();
+
+    // Read some card info
+    let appRelated;
+    try { appRelated=await state.card.getAppRelatedData(); } catch(_){}
+
+    const dev = state.card.device;
+    document.getElementById('infoDevice').textContent = dev.productName || `${dev.vendorId}:${dev.productId}`;
+    document.getElementById('infoSerial').textContent = dev.serialNumber || '—';
+    document.getElementById('infoFirmware').textContent = '—';
+    document.getElementById('infoApplet').textContent = 'OpenPGP ✓';
+    document.getElementById('cardInfo').classList.add('visible');
+    document.getElementById('btnConnect').style.display='none';
+    document.getElementById('btnDisconnect').style.display='';
+    state.connected = true;
+    setStatus('connected', dev.productName || 'YubiKey connected');
+  } catch(e) {
+    setStatus('error', e.message || 'Connection failed');
+  }
+};
+
+window.disconnectDevice = async function() {
+  await state.card.disconnect();
+  state.connected = false;
+  document.getElementById('cardInfo').classList.remove('visible');
+  document.getElementById('btnConnect').style.display='';
+  document.getElementById('btnDisconnect').style.display='none';
+  setStatus('', 'No device');
+};
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+
+window.goStep = function(n) {
+  document.getElementById(`panel-${state.currentStep}`).classList.remove('active');
+  document.getElementById(`nav-${state.currentStep}`).classList.remove('active');
+
+  state.doneSteps.add(state.currentStep);
+  state.currentStep = n;
+
+  document.getElementById(`panel-${n}`).classList.add('active');
+  document.getElementById(`nav-${n}`).classList.add('active');
+
+  // Mark done steps
+  for (let i=0;i<5;i++) {
+    const num = document.getElementById(`stepnum-${i}`);
+    if (state.doneSteps.has(i) && i!==n) {
+      document.getElementById(`nav-${i}`).classList.add('done');
+      num.innerHTML='✓';
+    }
+  }
+
+  if (n===4) buildSummary();
+};
+
+// ── Slot selection ────────────────────────────────────────────────────────────
+
+window.selectSlot = function(slot, el) {
+  state.slot = slot;
+  document.querySelectorAll('.slot-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+};
+
+// ── Algorithm tabs ────────────────────────────────────────────────────────────
+
+window.switchAlgo = function(algo, btn) {
+  state.algo = algo;
+  document.querySelectorAll('#algoTabs .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('algo-rsa').classList.toggle('active', algo==='rsa');
+  document.getElementById('algo-ec').classList.toggle('active', algo==='ec');
+  rebuildHexFields();
+};
+
+window.switchKeyInput = function(mode, btn) {
+  state.keyInputMode = mode;
+  document.querySelectorAll('#keyInputTabs .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('keyinput-pem').classList.toggle('active', mode==='pem');
+  document.getElementById('keyinput-hex').classList.toggle('active', mode==='hex');
+};
+
+// ── Hex field builder ─────────────────────────────────────────────────────────
+
+function rebuildHexFields() {
+  const container = document.getElementById('hexFields');
+  const fields = state.algo==='rsa'
+    ? [
+        ['e','Public Exponent (e)','Typically 010001 (65537)'],
+        ['p','Prime p','First prime factor'],
+        ['q','Prime q','Second prime factor'],
+        ['qinv','PQ (q⁻¹ mod p)','CRT coefficient'],
+        ['dp','DP1 (d mod p-1)','CRT exponent 1'],
+        ['dq','DQ1 (d mod q-1)','CRT exponent 2'],
+      ]
+    : [
+        ['d','Private key scalar (d)','Raw private key bytes'],
+      ];
+  container.innerHTML = fields.map(([id,label,hint])=>`
+    <div class="field">
+      <label>${label}</label>
+      <input type="text" id="hex-${id}" placeholder="Hex bytes, spaces OK…" style="font-family:var(--mono);font-size:11px">
+      <div class="field-hint">${hint}</div>
+    </div>
+  `).join('');
+}
+
+rebuildHexFields();
+
+// ── Validate key ──────────────────────────────────────────────────────────────
+
+window.validateKeyAndNext = function() {
+  const result = document.getElementById('pemParseResult');
+  if (state.keyInputMode==='pem') {
+    const pem = document.getElementById('pemInput').value.trim();
+    if (!pem) { showParseResult('error','Please paste a PEM private key.'); return; }
+    try {
+      const parsed = tryParsePEM(pem);
+      state.parsedKey = parsed;
+      const k=parsed.key;
+      const bits = k.n ? k.n.length*8 : '?';
+      showParseResult('ok',`✓ Parsed ${parsed.algo.toUpperCase()} key (${bits}-bit). Ready to import.`);
+      goStep(3);
+    } catch(e) {
+      showParseResult('error',`Parse error: ${e.message}`);
+    }
+  } else {
+    // Raw hex mode
+    try {
+      if (state.algo==='rsa') {
+        const k={};
+        for (const id of ['e','p','q','qinv','dp','dq']) {
+          const el=document.getElementById(`hex-${id}`);
+          if (!el.value.trim()) throw new Error(`${id} is required`);
+          k[id]=hexToBytes(el.value);
+        }
+        state.parsedKey={algo:'rsa',key:k};
+      } else {
+        const dEl=document.getElementById('hex-d');
+        if (!dEl.value.trim()) throw new Error('Private key scalar required');
+        state.parsedKey={algo:'ec',key:{d:hexToBytes(dEl.value)}};
+      }
+      goStep(3);
+    } catch(e) {
+      showParseResult('error',`Error: ${e.message}`);
+    }
+  }
+};
+
+function showParseResult(type, msg) {
+  const el=document.getElementById('pemParseResult');
+  const cls=type==='ok'?'alert-ok':'alert-error';
+  el.innerHTML=`<div class="alert ${cls}" style="margin-top:8px;font-size:12px">${msg}</div>`;
+}
+
+// ── PIN strength meter ────────────────────────────────────────────────────────
+
+window.updatePinStrength = function(input, barId) {
+  const len=input.value.length;
+  const bar=document.getElementById(barId);
+  const pct = Math.min(100, len/12*100);
+  bar.style.width=pct+'%';
+  bar.style.background=len<6?'var(--red)':len<8?'var(--amber)':'var(--green)';
+};
+
+// ── Summary ───────────────────────────────────────────────────────────────────
+
+function buildSummary() {
+  const slotName={sign:'Signature (B6)',decrypt:'Decryption (B8)',auth:'Authentication (A4)'};
+  const algoName=state.algo==='rsa'
+    ? `RSA-${document.getElementById('rsaBits').value}`
+    : `EC/${document.getElementById('ecCurve').value}`;
+  const fp=document.getElementById('keyFingerprint').value||'(not set)';
+  const ts=document.getElementById('keyTimestamp').value||'(not set)';
+  const name=document.getElementById('cardholderName').value||'(not set)';
+
+  document.getElementById('summaryGrid').innerHTML=`
+    <div class="summary-item"><div class="summary-item-label">Key Slot</div><div class="summary-item-value">${slotName[state.slot]}</div></div>
+    <div class="summary-item"><div class="summary-item-label">Algorithm</div><div class="summary-item-value">${algoName}</div></div>
+    <div class="summary-item"><div class="summary-item-label">Creation Date</div><div class="summary-item-value">${ts}</div></div>
+    <div class="summary-item"><div class="summary-item-label">Cardholder</div><div class="summary-item-value">${name}</div></div>
+  `;
+
+  // Format fingerprint for display
+  const fpClean=fp.replace(/\s/g,'').toUpperCase();
+  const fpFormatted = fpClean==='(NOTSET)'
+    ? 'Fingerprint not provided'
+    : fpClean.match(/.{1,4}/g)?.join(' ')||fpClean;
+  document.getElementById('fingerprintPreview').textContent=fpFormatted;
+}
+
+// ── Import ────────────────────────────────────────────────────────────────────
+
+window.runImport = async function() {
+  if (!state.connected) {
+    appendLog('err','Not connected — connect your YubiKey first');
+    return;
+  }
+  if (!state.parsedKey) {
+    appendLog('err','No key material — go back to step 3');
+    return;
+  }
+
+  const adminPin=document.getElementById('adminPin').value;
+  if (!adminPin) { appendLog('err','Admin PIN is required'); return; }
+
+  document.getElementById('btnImport').disabled=true;
+  document.getElementById('btnBack4').disabled=true;
+  clearLog();
+
+  const slot=KEY_SLOT_MAP[state.slot];
+  const card=state.card;
+
+  try {
+    appendLog('info','Selecting OpenPGP applet…');
+    await card.selectApplet();
+    appendLog('ok','OpenPGP applet selected');
+
+    appendLog('info','Verifying admin PIN…');
+    await card.verifyPIN(adminPin,'admin');
+    appendLog('ok','Admin PIN accepted');
+
+    // Set algorithm attributes
+    appendLog('info','Setting algorithm attributes…');
+    let attrs;
+    if (state.algo==='rsa') {
+      const bits=parseInt(document.getElementById('rsaBits').value);
+      const fmt=parseInt(document.getElementById('rsaFormat').value);
+      attrs=buildRSAAlgoAttrs(bits,17,fmt);
+    } else {
+      const curve=document.getElementById('ecCurve').value;
+      const oidMap={
+        nistp256:'2A 86 48 CE 3D 03 01 07',
+        nistp384:'2B 81 04 00 22',
+        nistp521:'2B 81 04 00 23',
+        ed25519: '2B 06 01 04 01 DA 47 0F 01',
+        x25519:  '2B 06 01 04 01 DA 47 0F 01',
+      };
+      const usage=state.slot==='decrypt'?'decrypt':'sign';
+      const algId=usage==='decrypt'?0x12:0x13;
+      const oid=hexToBytes(oidMap[curve]);
+      attrs=concat(new Uint8Array([algId]),oid,new Uint8Array([0xFF]));
+    }
+    await card.setAlgorithmAttributes(slot, attrs);
+    appendLog('ok',`Algorithm attributes set (${bytesToHex(attrs)})`);
+
+    // Build key material
+    appendLog('info','Preparing key material…');
+    let keyMaterial;
+    if (state.parsedKey.algo==='rsa') {
+      const fmt=parseInt(document.getElementById('rsaFormat').value);
+      keyMaterial=buildRSAKeyMaterial(state.parsedKey.key, fmt);
+    } else {
+      const {d}=state.parsedKey.key;
+      keyMaterial={
+        template:concat(new Uint8Array([0x92]),berLen(d.length)),
+        keyData: d,
+      };
+    }
+    appendLog('ok',`Key material ready (template: ${bytesToHex(keyMaterial.template)})`);
+
+    // Import
+    appendLog('info','Importing key to YubiKey…');
+    await card.importKey(slot, keyMaterial);
+    appendLog('ok','Key imported successfully ✓');
+
+    // Optional metadata
+    const fpHex=document.getElementById('keyFingerprint').value.replace(/\s/g,'');
+    if (fpHex.length===40) {
+      appendLog('info','Writing fingerprint…');
+      await card.setFingerprint(slot, hexToBytes(fpHex));
+      appendLog('ok','Fingerprint written');
+    }
+
+    const tsStr=document.getElementById('keyTimestamp').value.trim();
+    if (tsStr) {
+      appendLog('info','Writing key timestamp…');
+      const ts=new Date(tsStr);
+      if (!isNaN(ts)) { await card.setTimestamp(slot, ts); appendLog('ok','Timestamp written'); }
+      else appendLog('warn','Invalid timestamp, skipping');
+    }
+
+    const name=document.getElementById('cardholderName').value.trim();
+    if (name) {
+      appendLog('info','Writing cardholder name…');
+      await card.setCardholderName(name);
+      appendLog('ok','Cardholder name written');
+    }
+
+    appendLog('ok','── Import complete ──────────────────');
+
+    // Show success panel
+    const fpFormatted=fpHex.length===40 ? fpHex.toUpperCase().match(/.{1,4}/g).join(' ') : 'Fingerprint not set';
+    document.getElementById('successFingerprint').textContent=fpFormatted;
+    state.doneSteps.add(4);
+    document.getElementById(`panel-4`).classList.remove('active');
+    document.getElementById(`panel-5`).classList.add('active');
+
+  } catch(e) {
+    let msg=e.message||String(e);
+    if (e.sw===0x6982) msg='Security conditions not satisfied — wrong PIN or PIN not verified';
+    if (e.sw===0x6983) msg='Admin PIN blocked — reset required';
+    if (e.sw===0x6985) msg='Conditions not satisfied — check algorithm attributes';
+    if (e.remainingTries!==undefined) msg+=` (${e.remainingTries} tries remaining)`;
+    appendLog('err',`Error: ${msg}`);
+    document.getElementById('importResult').innerHTML=`<div class="alert alert-error">${msg}</div>`;
+    document.getElementById('btnImport').disabled=false;
+    document.getElementById('btnBack4').disabled=false;
+  }
+};
+
+// ── Export public key ─────────────────────────────────────────────────────────
+
+window.exportPublicKey = async function() {
+  try {
+    const slot=KEY_SLOT_MAP[state.slot];
+    const raw=await state.card.getPublicKey(slot);
+    const b64=btoa(String.fromCharCode(...raw));
+    const pem=`-----BEGIN PUBLIC KEY-----\n${b64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----`;
+    const blob=new Blob([pem],{type:'text/plain'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='yubikey-public-key.pem'; a.click();
+  } catch(e) {
+    alert(`Could not export public key: ${e.message}`);
+  }
+};
+
+// ── Logging ───────────────────────────────────────────────────────────────────
+
+function clearLog() {
+  document.getElementById('logOutput').innerHTML='';
+}
+
+function appendLog(type, msg) {
+  const el=document.getElementById('logOutput');
+  const now=new Date().toLocaleTimeString('en-US',{hour12:false});
+  const cls={ok:'log-ok',err:'log-err',warn:'log-warn',info:'log-info'}[type]||'';
+  const line=document.createElement('div');
+  line.className='log-line';
+  line.innerHTML=`<span class="log-time">${now}</span><span class="log-msg ${cls}">${msg}</span>`;
+  el.appendChild(line);
+  el.scrollTop=el.scrollHeight;
+}
+
+// ── Status pill ───────────────────────────────────────────────────────────────
+
+function setStatus(type, text) {
+  const pill=document.getElementById('statusPill');
+  pill.className='status-pill'+(type?' '+type:'');
+  document.getElementById('statusText').textContent=text;
+}
+
+// Set default timestamp to now
+document.getElementById('keyTimestamp').value=new Date().toISOString().slice(0,19)+'Z';
+
+</script>
+</body>
+</html>
