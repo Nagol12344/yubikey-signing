@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YubiKey Sealed — PGP Messenger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/openpgp/5.11.2/openpgp.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Syne+Mono&display=swap');
+
+:root {
+  --ink:    #0e0f11;
+  --paper:  #f5f2eb;
+  --cream:  #ede9df;
+  --gold:   #c8a84b;
+  --gold2:  #e8c96a;
+  --rust:   #b84c2a;
+  --slate:  #3a3d45;
+  --muted:  #8a8878;
+  --border: #d4cfc2;
+  --shadow: rgba(14,15,17,.12);
+  --mono: 'Syne Mono', monospace;
+  --sans: 'Syne', sans-serif;
+  --r: 10px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 15px; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  min-height: 100vh;
+  /* subtle linen texture */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+}
+
+/* ── Letterhead header ──────────────────────────────────── */
+header {
+  border-bottom: 2px solid var(--ink);
+  padding: 20px 40px 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+}
+
+.wordmark {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--ink);
+}
+
+.wordmark span {
+  color: var(--gold);
+  font-style: italic;
+}
+
+.tagline {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.key-badge {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 5px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  transition: all .2s;
+}
+
+.key-badge.armed {
+  color: var(--gold);
+  border-color: var(--gold);
+  background: #faf6ec;
+}
+
+.key-badge .pip {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background .2s;
+}
+.key-badge.armed .pip {
+  background: var(--gold);
+  box-shadow: 0 0 0 3px #c8a84b30;
+}
+
+/* ── Main layout ─────────────────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  max-width: 1100px;
+  margin: 0 auto;
+  min-height: calc(100vh - 65px);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.sidebar {
+  padding: 32px 24px;
+  border-right: 1.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.sidebar-section {}
+
+.sidebar-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border);
+  background: white;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.btn:hover { background: var(--cream); border-color: var(--ink); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+
+.btn.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.btn.primary:hover { background: var(--slate); }
+
+.btn.gold {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--ink);
+}
+.btn.gold:hover { background: var(--gold2); }
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.btn.ghost:hover { background: var(--cream); color: var(--ink); border-color: var(--border); }
+
+.btn-row { display: flex; gap: 8px; }
+
+/* ── Key info card ───────────────────────────────────────── */
+.key-card {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px;
+  display: none;
+}
+.key-card.visible { display: block; }
+
+.key-card-name {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.key-card-fp {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+/* ── Nav ─────────────────────────────────────────────────── */
+.nav { display: flex; flex-direction: column; gap: 3px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+  transition: all .12s;
+  border: 1.5px solid transparent;
+}
+.nav-item:hover { background: var(--cream); }
+.nav-item.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.nav-item .nav-icon { font-size: 16px; }
+
+/* ── Main content ────────────────────────────────────────── */
+.content { padding: 36px 40px; }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+.panel-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  margin-bottom: 6px;
+}
+
+.panel-sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+/* ── Setup flow ──────────────────────────────────────────── */
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 560px;
+}
+
+.setup-step {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 22px 24px;
+  position: relative;
+  transition: border-color .2s;
+}
+
+.setup-step.active-step { border-color: var(--gold); box-shadow: 0 0 0 3px #c8a84b18; }
+.setup-step.done-step { border-color: var(--border); opacity: .7; }
+
+.step-num-badge {
+  position: absolute;
+  top: -10px; left: 20px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.done-step .step-num-badge { background: var(--gold); color: var(--ink); }
+
+.step-title { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+.step-body  { font-size: 13px; color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
+
+/* ── Form ────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+input, textarea, select {
+  background: var(--cream);
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px 13px;
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+
+input:focus, textarea:focus { border-color: var(--gold); background: #faf6ec; }
+textarea { resize: vertical; min-height: 130px; line-height: 1.6; }
+
+.field-hint { font-size: 11.5px; color: var(--muted); }
+
+/* ── Compose / read ──────────────────────────────────────── */
+.compose-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: 900px;
+}
+
+.compose-col {}
+
+.col-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.col-title::after { content: ''; flex:1; height: 1px; background: var(--border); }
+
+.message-box {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 18px;
+  min-height: 220px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--slate);
+  position: relative;
+}
+
+.message-box.cipher {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  word-break: break-all;
+  background: #f8f5ef;
+}
+
+.message-box .placeholder {
+  color: var(--border);
+  font-style: italic;
+  user-select: none;
+}
+
+textarea.message-input {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  min-height: 220px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  padding: 18px;
+  resize: vertical;
+}
+
+/* ── Recipient row ───────────────────────────────────────── */
+.recipient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.recipient-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.recipient-pill .fp {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  margin-left: auto;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipient-pill .remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.recipient-pill .remove:hover { color: var(--rust); }
+
+/* ── Alert ───────────────────────────────────────────────── */
+.alert {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border: 1.5px solid;
+  margin-bottom: 16px;
+}
+
+.alert-warn  { background: #fff8eb; border-color: #f0d070; color: #7a5500; }
+.alert-ok    { background: #f0faf4; border-color: #7dd4a0; color: #1a5e38; }
+.alert-err   { background: #fff0ed; border-color: #f0a090; color: #8a2010; }
+.alert-info  { background: #f0f4ff; border-color: #9ab0f0; color: #1a2a7a; }
+
+/* ── Key manager ─────────────────────────────────────────── */
+.key-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+}
+
+.key-row .avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--cream);
+  border: 1.5px solid var(--border);
+  display: grid; place-items: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.key-row .kname { font-weight: 600; font-size: 13.5px; }
+.key-row .kemail { font-size: 12px; color: var(--muted); }
+.key-row .kfp {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.key-row .kactions { margin-left: auto; display: flex; gap: 6px; }
+
+/* ── Import textarea ─────────────────────────────────────── */
+.pem-area {
+  font-family: var(--mono);
+  font-size: 11px;
+  min-height: 160px;
+  background: #f8f5ef;
+}
+
+/* ── Seal animation ──────────────────────────────────────── */
+@keyframes sealIn {
+  from { transform: scale(1.3) rotate(-5deg); opacity: 0; }
+  to   { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.seal {
+  display: inline-block;
+  animation: sealIn .4s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+
+/* ── Copy button ─────────────────────────────────────────── */
+.copy-btn {
+  position: absolute;
+  top: 10px; right: 10px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .2s;
+}
+
+.message-box:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { background: var(--slate); }
+
+/* ── Spinner ─────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Touch prompt ────────────────────────────────────────── */
+.touch-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(14,15,17,.7);
+  display: none;
+  place-items: center;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.touch-overlay.visible { display: grid; }
+
+.touch-card {
+  background: var(--paper);
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  padding: 40px 48px;
+  text-align: center;
+  max-width: 360px;
+}
+
+.touch-icon { font-size: 52px; margin-bottom: 16px; }
+.touch-title { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+.touch-sub { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+@keyframes touchPulse {
+  0%,100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+.touch-icon { animation: touchPulse 1.5s ease-in-out infinite; }
+
+/* ── Tabs ────────────────────────────────────────────────── */
+.tabs { display: flex; border-bottom: 1.5px solid var(--border); margin-bottom: 20px; }
+.tab-btn {
+  padding: 9px 18px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  background: none;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: -1.5px;
+  transition: all .15s;
+}
+.tab-btn.active { color: var(--ink); border-bottom-color: var(--gold); }
+.tab-btn:hover:not(.active) { color: var(--slate); }
+</style>
+</head>
+<body>
+
+<div id="touchOverlay" class="touch-overlay">
+  <div class="touch-card">
+    <div class="touch-icon">🔑</div>
+    <div class="touch-title">Touch your YubiKey</div>
+    <div class="touch-sub" id="touchReason">Tap the gold contact to authorise this operation.</div>
+  </div>
+</div>
+
+<header>
+  <div class="wordmark">Yubikey<span>Sealed</span></div>
+  <div class="tagline">Hardware-bound PGP</div>
+  <div class="key-badge" id="keyBadge">
+    <div class="pip"></div>
+    <span id="keyBadgeText">No key loaded</span>
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Identity</div>
+      <div class="key-card" id="myKeyCard">
+        <div class="key-card-name" id="myKeyName">—</div>
+        <div class="key-card-fp" id="myKeyFp">—</div>
+      </div>
+      <button class="btn" id="btnSetup" onclick="showPanel('setup')" style="margin-top:10px">
+        ⚙ Setup / Change Key
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Actions</div>
+      <div class="nav">
+        <div class="nav-item active" id="nav-compose" onclick="showPanel('compose')">
+          <span class="nav-icon">✉</span> Compose
+        </div>
+        <div class="nav-item" id="nav-decrypt" onclick="showPanel('decrypt')">
+          <span class="nav-icon">🔓</span> Decrypt
+        </div>
+        <div class="nav-item" id="nav-keys" onclick="showPanel('keys')">
+          <span class="nav-icon">🗂</span> Key Ring
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto">
+      <div style="font-size:11px;color:var(--muted);line-height:1.6;padding:12px;background:var(--cream);border-radius:8px;border:1px solid var(--border)">
+        <strong style="color:var(--slate)">How it works:</strong><br>
+        Your PGP private key is encrypted by a secret only your YubiKey can derive. It never exists unencrypted on disk.
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main content ── -->
+  <main class="content">
+
+    <!-- ══ SETUP PANEL ════════════════════════════════════ -->
+    <div class="panel active" id="panel-setup">
+      <div class="panel-title">Setup</div>
+      <div class="panel-sub">Create or import your PGP key. It will be sealed to your YubiKey using WebAuthn PRF — only your physical key can unlock it.</div>
+
+      <div class="setup-steps">
+
+        <!-- Step 1: Register YubiKey -->
+        <div class="setup-step active-step" id="setupStep1">
+          <div class="step-num-badge">Step 1</div>
+          <div class="step-title">Register your YubiKey</div>
+          <div class="step-body">Creates a WebAuthn credential on your YubiKey. This binds the encryption to this specific key. Touch the gold contact when prompted.</div>
+          <button class="btn gold" onclick="doRegister()">
+            <span id="registerBtnIcon">🔑</span>
+            <span id="registerBtnText">Register YubiKey</span>
+          </button>
+          <div id="registerResult" style="margin-top:12px"></div>
+        </div>
+
+        <!-- Step 2: PGP key -->
+        <div class="setup-step" id="setupStep2" style="opacity:.5">
+          <div class="step-num-badge">Step 2</div>
+          <div class="step-title">Your PGP identity</div>
+          <div class="step-body">Generate a new key pair, or import an existing one.</div>
+
+          <div class="tabs" id="pgpKeyTabs">
+            <button class="tab-btn active" onclick="switchPgpTab('generate',this)">Generate New</button>
+            <button class="tab-btn" onclick="switchPgpTab('import',this)">Import Existing</button>
+          </div>
+
+          <div id="pgptab-generate">
+            <div class="field">
+              <label>Your name</label>
+              <input type="text" id="genName" placeholder="Alice Smith">
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <input type="email" id="genEmail" placeholder="alice@example.com">
+            </div>
+            <div class="field">
+              <label>Key type</label>
+              <select id="genType">
+                <option value="ecc">ECC (Curve25519) — recommended</option>
+                <option value="rsa4096">RSA 4096-bit</option>
+              </select>
+            </div>
+            <button class="btn primary" id="btnGenerate" onclick="doGenerateKey()" disabled>
+              Generate &amp; Seal Key
+            </button>
+          </div>
+
+          <div id="pgptab-import" style="display:none">
+            <div class="field">
+              <label>Private key PEM</label>
+              <textarea class="pem-area" id="importPemInput" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----
+...
+-----END PGP PRIVATE KEY BLOCK-----
+
+Passphrase-protected keys are supported."></textarea>
+            </div>
+            <div class="field">
+              <label>Passphrase <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:var(--muted)">(if encrypted)</span></label>
+              <input type="password" id="importPassphrase" placeholder="Leave blank if not encrypted">
+            </div>
+            <button class="btn primary" id="btnImport" onclick="doImportKey()" disabled>
+              Import &amp; Seal Key
+            </button>
+          </div>
+
+          <div id="pgpKeyResult" style="margin-top:12px"></div>
+        </div>
+
+        <!-- Step 3: Done -->
+        <div class="setup-step" id="setupStep3" style="opacity:.5">
+          <div class="step-num-badge">Step 3</div>
+          <div class="step-title">Ready to use</div>
+          <div class="step-body">Your key is sealed. Share your public key so others can encrypt messages to you.</div>
+          <button class="btn" id="btnExportPub" onclick="exportMyPublicKey()" disabled>
+            Export My Public Key
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══ COMPOSE PANEL ══════════════════════════════════ -->
+    <div class="panel" id="panel-compose">
+      <div class="panel-title">Compose</div>
+      <div class="panel-sub">Encrypt and sign a message. Recipients need to have their public key in your key ring.</div>
+
+      <div id="noKeyWarning" class="alert alert-warn" style="display:none">
+        ⚠ No key loaded. Go to <strong>Setup</strong> first.
+      </div>
+
+      <div style="max-width:520px;margin-bottom:20px">
+        <div class="sidebar-label">Recipients</div>
+        <div class="recipient-list" id="recipientList"></div>
+        <select id="recipientSelect" style="margin-bottom:8px" onchange="addRecipient(this)">
+          <option value="">+ Add recipient from key ring…</option>
+        </select>
+        <div class="field-hint">Messages are encrypted to all recipients and signed with your key.</div>
+      </div>
+
+      <div class="compose-grid">
+        <div class="compose-col">
+          <div class="col-title">Plaintext</div>
+          <textarea class="message-input" id="plaintextInput" placeholder="Write your message here…"></textarea>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn primary" onclick="doEncrypt()">
+              🔒 Encrypt &amp; Sign
+            </button>
+            <button class="btn ghost" onclick="clearCompose()">Clear</button>
+          </div>
+        </div>
+
+        <div class="compose-col">
+          <div class="col-title">Ciphertext</div>
+          <div class="message-box cipher" id="ciphertextBox" style="position:relative">
+            <span class="placeholder">Encrypted message will appear here…</span>
+            <button class="copy-btn" onclick="copyBox('ciphertextBox')">Copy</button>
+          </div>
+          <div id="encryptResult" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DECRYPT PANEL ══════════════════════════════════ -->
+    <div class="panel" id="panel-decrypt">
+      <div class="panel-title">Decrypt</div>
+      <div class="panel-sub">Paste an encrypted PGP message. Your YubiKey will unlock your private key to decrypt it.</div>
+
+      <div id="noKeyWarning2" class="alert alert-warn" style="display:none">
+        ⚠ No key loaded. Go to <strong>Setup</strong> first.
+      </div>
+
+      <div class="compose-grid">
+        <div class="compose-col">
+          <div class="col-title">Ciphertext</div>
+          <textarea class="message-input" id="ciphertextInput"
+            placeholder="-----BEGIN PGP MESSAGE-----
+...
+-----END PGP MESSAGE-----"></textarea>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn primary" onclick="doDecrypt()">
+              🔓 Decrypt
+            </button>
+            <button class="btn ghost" onclick="clearDecrypt()">Clear</button>
+          </div>
+        </div>
+
+        <div class="compose-col">
+          <div class="col-title">Plaintext</div>
+          <div class="message-box" id="plaintextBox" style="position:relative">
+            <span class="placeholder">Decrypted message will appear here…</span>
+            <button class="copy-btn" onclick="copyBox('plaintextBox')">Copy</button>
+          </div>
+          <div id="decryptResult" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ KEY RING PANEL ══════════════════════════════════ -->
+    <div class="panel" id="panel-keys">
+      <div class="panel-title">Key Ring</div>
+      <div class="panel-sub">Public keys of your contacts. Add a key to encrypt messages to them.</div>
+
+      <div style="max-width:640px">
+        <div class="key-list" id="keyList"></div>
+
+        <div style="margin-top:20px;padding-top:20px;border-top:1.5px solid var(--border)">
+          <div class="sidebar-label">Add Public Key</div>
+          <div class="field">
+            <textarea class="pem-area" id="addKeyPem"
+              placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----
+...
+-----END PGP PUBLIC KEY BLOCK-----"></textarea>
+          </div>
+          <button class="btn primary" onclick="doAddKey()" style="width:auto;padding:10px 24px">
+            Add to Key Ring
+          </button>
+          <div id="addKeyResult" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+const DB_NAME    = 'yksealed';
+const DB_VERSION = 1;
+let db;
+
+let state = {
+  credentialId:  null,   // Uint8Array — stored WebAuthn credential ID
+  sealedKey:     null,   // {iv, ciphertext, salt} — encrypted PGP private key
+  myPublicKey:   null,   // openpgp.PublicKey
+  myPrivateKey:  null,   // openpgp.PrivateKey — only in memory during ops
+  myKeyInfo:     null,   // {name, email, fingerprint}
+  contactKeys:   [],     // [{name, email, fingerprint, armoredPublic}]
+  registered:    false,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IndexedDB
+// ─────────────────────────────────────────────────────────────────────────────
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('store')) d.createObjectStore('store');
+    };
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+
+async function dbSet(key, value) {
+  const tx = db.transaction('store','readwrite');
+  tx.objectStore('store').put(value, key);
+  return new Promise((res,rej) => { tx.oncomplete=res; tx.onerror=e=>rej(e.target.error); });
+}
+
+async function dbGet(key) {
+  const tx = db.transaction('store','readonly');
+  const req = tx.objectStore('store').get(key);
+  return new Promise((res,rej) => { req.onsuccess=e=>res(e.target.result); req.onerror=e=>rej(e.target.error); });
+}
+
+async function dbDel(key) {
+  const tx = db.transaction('store','readwrite');
+  tx.objectStore('store').delete(key);
+  return new Promise((res,rej) => { tx.oncomplete=res; tx.onerror=e=>rej(e.target.error); });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WebAuthn PRF helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PRF_SALT = new TextEncoder().encode('YubiKeySealed-v1-pgp-key-encryption');
+
+async function registerCredential() {
+  // Creates a new FIDO2 credential on the YubiKey with PRF enabled
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+  const cred = await navigator.credentials.create({
+    publicKey: {
+      challenge,
+      rp: { name: 'YubiKey Sealed', id: location.hostname || 'localhost' },
+      user: {
+        id: crypto.getRandomValues(new Uint8Array(16)),
+        name: 'pgp-key',
+        displayName: 'PGP Key',
+      },
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7  },   // ES256
+        { type: 'public-key', alg: -257 },  // RS256
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: 'cross-platform',  // security key, not platform
+        residentKey: 'preferred',
+        userVerification: 'preferred',
+      },
+      extensions: {
+        prf: { eval: { first: PRF_SALT } }
+      },
+      timeout: 60000,
+    }
+  });
+
+  // Check PRF was granted
+  const prfResult = cred.getClientExtensionResults()?.prf;
+  if (!prfResult?.enabled && !prfResult?.results?.first) {
+    throw new Error(
+      'Your YubiKey or browser does not support the PRF extension. ' +
+      'You need a YubiKey 5 series and Chrome/Edge.'
+    );
+  }
+
+  return cred;
+}
+
+async function getPRFSecret(credentialId, salt = PRF_SALT) {
+  // Gets the deterministic PRF output from the YubiKey for a given salt
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId: location.hostname || 'localhost',
+      allowCredentials: [{ type: 'public-key', id: credentialId }],
+      userVerification: 'preferred',
+      extensions: {
+        prf: { eval: { first: salt } }
+      },
+      timeout: 60000,
+    }
+  });
+
+  const prfOutput = assertion.getClientExtensionResults()?.prf?.results?.first;
+  if (!prfOutput) {
+    throw new Error('YubiKey did not return a PRF result. Make sure you tap the key.');
+  }
+  return new Uint8Array(prfOutput);
+}
+
+async function deriveWrappingKey(prfSecret) {
+  // HKDF: PRF secret → AES-256-GCM key
+  const baseKey = await crypto.subtle.importKey(
+    'raw', prfSecret, 'HKDF', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new TextEncoder().encode('YubiKeySealed-wrapping-key'),
+      info: new TextEncoder().encode('pgp-private-key-aes-gcm'),
+    },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function sealPrivateKey(armoredPrivateKey, prfSecret) {
+  const key   = await deriveWrappingKey(prfSecret);
+  const iv    = crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(armoredPrivateKey);
+  const ct    = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
+  return { iv: Array.from(iv), ciphertext: Array.from(new Uint8Array(ct)) };
+}
+
+async function unsealPrivateKey(sealed, prfSecret) {
+  const key = await deriveWrappingKey(prfSecret);
+  const iv  = new Uint8Array(sealed.iv);
+  const ct  = new Uint8Array(sealed.ciphertext);
+  const pt  = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+  return new TextDecoder().decode(pt);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Touch overlay
+// ─────────────────────────────────────────────────────────────────────────────
+function showTouch(reason) {
+  document.getElementById('touchReason').textContent = reason;
+  document.getElementById('touchOverlay').classList.add('visible');
+}
+function hideTouch() {
+  document.getElementById('touchOverlay').classList.remove('visible');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alert helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function alertHTML(type, msg) {
+  return `<div class="alert alert-${type}">${msg}</div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI nav
+// ─────────────────────────────────────────────────────────────────────────────
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  const nav = document.getElementById('nav-' + name);
+  if (nav) nav.classList.add('active');
+
+  if (name === 'compose' || name === 'decrypt') {
+    const warn = !state.myPublicKey;
+    document.getElementById('noKeyWarning').style.display  = warn ? '' : 'none';
+    document.getElementById('noKeyWarning2').style.display = warn ? '' : 'none';
+  }
+  if (name === 'keys') renderKeyList();
+  if (name === 'compose') populateRecipientSelect();
+}
+
+function switchPgpTab(tab, btn) {
+  document.querySelectorAll('#pgpKeyTabs .tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('pgptab-generate').style.display = tab === 'generate' ? '' : 'none';
+  document.getElementById('pgptab-import').style.display   = tab === 'import'   ? '' : 'none';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Setup: Step 1 — Register
+// ─────────────────────────────────────────────────────────────────────────────
+async function doRegister() {
+  const btn  = document.getElementById('registerBtnText');
+  const icon = document.getElementById('registerBtnIcon');
+  const res  = document.getElementById('registerResult');
+
+  btn.textContent = 'Waiting for YubiKey…';
+  icon.innerHTML  = '<span class="spinner"></span>';
+  showTouch('Register a new credential. Touch the gold contact.');
+  res.innerHTML = '';
+
+  try {
+    const cred = await registerCredential();
+    state.credentialId = new Uint8Array(cred.rawId);
+    state.registered = true;
+
+    // Persist credential ID
+    await dbSet('credentialId', Array.from(state.credentialId));
+
+    res.innerHTML = alertHTML('ok', '<strong>✓ YubiKey registered.</strong> Now set up your PGP key below.');
+
+    // Unlock step 2
+    document.getElementById('setupStep1').classList.remove('active-step');
+    document.getElementById('setupStep1').classList.add('done-step');
+    document.getElementById('setupStep2').style.opacity = '1';
+    document.getElementById('setupStep2').classList.add('active-step');
+    document.getElementById('btnGenerate').disabled = false;
+    document.getElementById('btnImport').disabled   = false;
+
+    btn.textContent = 'Registered ✓';
+    icon.textContent = '✓';
+
+  } catch(e) {
+    res.innerHTML = alertHTML('err', `Registration failed: ${e.message}`);
+    btn.textContent = 'Try Again';
+    icon.textContent = '🔑';
+  } finally {
+    hideTouch();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Setup: Step 2 — Generate key
+// ─────────────────────────────────────────────────────────────────────────────
+async function doGenerateKey() {
+  const name  = document.getElementById('genName').value.trim();
+  const email = document.getElementById('genEmail').value.trim();
+  const type  = document.getElementById('genType').value;
+  const res   = document.getElementById('pgpKeyResult');
+
+  if (!name || !email) { res.innerHTML = alertHTML('warn', 'Please enter your name and email.'); return; }
+
+  res.innerHTML = alertHTML('info', '<span class="spinner"></span> Generating key pair…');
+
+  try {
+    const keyOpts = {
+      userIDs: [{ name, email }],
+      passphrase: '',  // We seal with PRF instead
+    };
+    if (type === 'ecc') {
+      keyOpts.type = 'ecc';
+      keyOpts.curve = 'curve25519';
+    } else {
+      keyOpts.type = 'rsa';
+      keyOpts.rsaBits = 4096;
+    }
+
+    const { privateKey, publicKey } = await openpgp.generateKey(keyOpts);
+
+    await sealAndStoreKey(privateKey, publicKey, name, email, res);
+
+  } catch(e) {
+    res.innerHTML = alertHTML('err', `Key generation failed: ${e.message}`);
+    hideTouch();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Setup: Step 2 — Import key
+// ─────────────────────────────────────────────────────────────────────────────
+async function doImportKey() {
+  const pem        = document.getElementById('importPemInput').value.trim();
+  const passphrase = document.getElementById('importPassphrase').value;
+  const res        = document.getElementById('pgpKeyResult');
+
+  if (!pem) { res.innerHTML = alertHTML('warn', 'Please paste your private key.'); return; }
+
+  res.innerHTML = alertHTML('info', '<span class="spinner"></span> Parsing key…');
+
+  try {
+    const privKeyObj = await openpgp.readPrivateKey({ armoredKey: pem });
+    let decrypted = privKeyObj;
+    if (!privKeyObj.isDecrypted()) {
+      if (!passphrase) { res.innerHTML = alertHTML('warn', 'This key is passphrase-protected. Enter the passphrase.'); return; }
+      decrypted = await openpgp.decryptKey({ privateKey: privKeyObj, passphrase });
+    }
+    const pubKey = decrypted.toPublic();
+    const uid    = decrypted.getUserIDs()[0] || '';
+    const match  = uid.match(/^(.*?)\s*<(.+?)>$/) || ['','Unknown',''];
+    const name   = match[1].trim() || uid;
+    const email  = match[2] || '';
+    // Re-armor without passphrase for sealing
+    const armoredPriv = await openpgp.armor(openpgp.enums.armor.privateKey, decrypted.write());
+    await sealAndStoreKey(armoredPriv, pubKey, name, email, res);
+  } catch(e) {
+    res.innerHTML = alertHTML('err', `Import failed: ${e.message}`);
+    hideTouch();
+  }
+}
+
+async function sealAndStoreKey(armoredPriv, pubKey, name, email, resEl) {
+  resEl.innerHTML = alertHTML('info', '<span class="spinner"></span> Touch your YubiKey to seal the key…');
+  showTouch('Sealing your PGP private key. Touch the gold contact.');
+
+  try {
+    const prfSecret = await getPRFSecret(state.credentialId);
+    const armoredPrivStr = typeof armoredPriv === 'string' ? armoredPriv : armoredPriv;
+    const pubKeyObj = typeof pubKey === 'string'
+      ? await openpgp.readKey({ armoredKey: pubKey })
+      : pubKey;
+
+    const armoredPub = pubKeyObj.armor();
+    const fp = pubKeyObj.getFingerprint().toUpperCase().match(/.{4}/g).join(' ');
+
+    const sealed = await sealPrivateKey(armoredPrivStr, prfSecret);
+
+    // Store in IndexedDB
+    await dbSet('sealedKey',   sealed);
+    await dbSet('publicKey',   armoredPub);
+    await dbSet('keyInfo',     { name, email, fingerprint: fp });
+
+    state.sealedKey   = sealed;
+    state.myPublicKey = pubKeyObj;
+    state.myKeyInfo   = { name, email, fingerprint: fp };
+
+    updateKeyBadge();
+
+    resEl.innerHTML = alertHTML('ok',
+      `<strong><span class="seal">🔏</span> Key sealed.</strong><br>
+       <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">${fp}</span>`
+    );
+
+    // Unlock step 3
+    document.getElementById('setupStep2').classList.remove('active-step');
+    document.getElementById('setupStep2').classList.add('done-step');
+    document.getElementById('setupStep3').style.opacity = '1';
+    document.getElementById('setupStep3').classList.add('active-step');
+    document.getElementById('btnExportPub').disabled = false;
+
+  } catch(e) {
+    resEl.innerHTML = alertHTML('err', `Sealing failed: ${e.message}`);
+  } finally {
+    hideTouch();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load private key (requires YubiKey touch)
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadPrivateKey(reason) {
+  if (!state.credentialId || !state.sealedKey) {
+    throw new Error('No sealed key found. Please complete Setup first.');
+  }
+  showTouch(reason || 'Unlocking your private key. Touch the gold contact.');
+  try {
+    const prfSecret = await getPRFSecret(state.credentialId);
+    const armoredPriv = await unsealPrivateKey(state.sealedKey, prfSecret);
+    const privKey = await openpgp.readPrivateKey({ armoredKey: armoredPriv });
+    return privKey;
+  } finally {
+    hideTouch();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compose: Encrypt + Sign
+// ─────────────────────────────────────────────────────────────────────────────
+let recipients = [];  // [{name, email, fingerprint, publicKey}]
+
+function populateRecipientSelect() {
+  const sel = document.getElementById('recipientSelect');
+  const current = recipients.map(r => r.fingerprint);
+  sel.innerHTML = '<option value="">+ Add recipient…</option>';
+  for (const k of state.contactKeys) {
+    if (!current.includes(k.fingerprint)) {
+      const opt = document.createElement('option');
+      opt.value = k.fingerprint;
+      opt.textContent = `${k.name} <${k.email}>`;
+      sel.appendChild(opt);
+    }
+  }
+  // Also add self
+  if (state.myKeyInfo && !current.includes(state.myKeyInfo.fingerprint)) {
+    const opt = document.createElement('option');
+    opt.value = '__self__';
+    opt.textContent = `${state.myKeyInfo.name} (myself)`;
+    sel.appendChild(opt);
+  }
+}
+
+function addRecipient(sel) {
+  const val = sel.value;
+  if (!val) return;
+  sel.value = '';
+  let key;
+  if (val === '__self__') {
+    key = { ...state.myKeyInfo, publicKey: state.myPublicKey };
+  } else {
+    key = state.contactKeys.find(k => k.fingerprint === val);
+    if (!key) return;
+  }
+  if (!recipients.find(r => r.fingerprint === key.fingerprint)) {
+    recipients.push(key);
+    renderRecipients();
+    populateRecipientSelect();
+  }
+}
+
+function removeRecipient(fp) {
+  recipients = recipients.filter(r => r.fingerprint !== fp);
+  renderRecipients();
+  populateRecipientSelect();
+}
+
+function renderRecipients() {
+  const list = document.getElementById('recipientList');
+  list.innerHTML = recipients.map(r => `
+    <div class="recipient-pill">
+      <span>🔑</span>
+      <span>${r.name} &lt;${r.email}&gt;</span>
+      <span class="fp">${r.fingerprint}</span>
+      <button class="remove" onclick="removeRecipient('${r.fingerprint}')" title="Remove">×</button>
+    </div>
+  `).join('');
+}
+
+async function doEncrypt() {
+  const plaintext = document.getElementById('plaintextInput').value.trim();
+  const resEl     = document.getElementById('encryptResult');
+  const box       = document.getElementById('ciphertextBox');
+
+  if (!plaintext)           { resEl.innerHTML = alertHTML('warn','Write a message first.'); return; }
+  if (!state.myPublicKey)   { resEl.innerHTML = alertHTML('warn','No key loaded. Go to Setup.'); return; }
+  if (recipients.length===0){ resEl.innerHTML = alertHTML('warn','Add at least one recipient.'); return; }
+
+  resEl.innerHTML = alertHTML('info','<span class="spinner"></span> Touch your YubiKey to sign…');
+
+  try {
+    const privateKey = await loadPrivateKey('Signing the message. Touch the gold contact.');
+
+    // Collect recipient public keys
+    const encryptionKeys = [];
+    for (const r of recipients) {
+      if (r.publicKey) {
+        encryptionKeys.push(r.publicKey);
+      } else {
+        const k = await openpgp.readKey({ armoredKey: r.armoredPublic });
+        encryptionKeys.push(k);
+      }
+    }
+
+    const message = await openpgp.createMessage({ text: plaintext });
+    const encrypted = await openpgp.encrypt({
+      message,
+      encryptionKeys,
+      signingKeys: privateKey,
+    });
+
+    box.innerHTML = `<button class="copy-btn" onclick="copyBox('ciphertextBox')">Copy</button>` +
+                    `<pre style="white-space:pre-wrap;font-size:10.5px">${encrypted}</pre>`;
+    resEl.innerHTML = alertHTML('ok','✓ Encrypted and signed.');
+
+  } catch(e) {
+    resEl.innerHTML = alertHTML('err', `Encryption failed: ${e.message}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Decrypt
+// ─────────────────────────────────────────────────────────────────────────────
+async function doDecrypt() {
+  const armoredMsg = document.getElementById('ciphertextInput').value.trim();
+  const resEl      = document.getElementById('decryptResult');
+  const box        = document.getElementById('plaintextBox');
+
+  if (!armoredMsg) { resEl.innerHTML = alertHTML('warn','Paste an encrypted message first.'); return; }
+  if (!state.myPublicKey) { resEl.innerHTML = alertHTML('warn','No key loaded. Go to Setup.'); return; }
+
+  resEl.innerHTML = alertHTML('info','<span class="spinner"></span> Touch your YubiKey to decrypt…');
+
+  try {
+    const privateKey = await loadPrivateKey('Decrypting the message. Touch the gold contact.');
+    const message    = await openpgp.readMessage({ armoredMessage: armoredMsg });
+
+    // Gather verification keys from key ring
+    const verificationKeys = state.contactKeys.length > 0
+      ? await Promise.all(state.contactKeys.map(k => openpgp.readKey({ armoredKey: k.armoredPublic })))
+      : [];
+    if (state.myPublicKey) verificationKeys.push(state.myPublicKey);
+
+    const { data, signatures } = await openpgp.decrypt({
+      message,
+      decryptionKeys: privateKey,
+      verificationKeys: verificationKeys.length > 0 ? verificationKeys : undefined,
+    });
+
+    let sigNote = '';
+    if (signatures.length > 0) {
+      try {
+        await signatures[0].verified;
+        sigNote = '<br><small style="color:#2a7a50">✓ Signature verified</small>';
+      } catch (_) {
+        sigNote = '<br><small style="color:#9a5010">⚠ Signature could not be verified (key not in ring)</small>';
+      }
+    }
+
+    box.innerHTML =
+      `<button class="copy-btn" onclick="copyBox('plaintextBox')">Copy</button>` +
+      `<div style="white-space:pre-wrap">${escapeHtml(data)}</div>`;
+    resEl.innerHTML = alertHTML('ok', `✓ Decrypted successfully.${sigNote}`);
+
+  } catch(e) {
+    resEl.innerHTML = alertHTML('err', `Decryption failed: ${e.message}`);
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Key ring
+// ─────────────────────────────────────────────────────────────────────────────
+async function doAddKey() {
+  const pem   = document.getElementById('addKeyPem').value.trim();
+  const resEl = document.getElementById('addKeyResult');
+  if (!pem) { resEl.innerHTML = alertHTML('warn','Paste a public key.'); return; }
+
+  try {
+    const key   = await openpgp.readKey({ armoredKey: pem });
+    const uid   = key.getUserIDs()[0] || '';
+    const match = uid.match(/^(.*?)\s*<(.+?)>$/) || ['','Unknown',''];
+    const name  = match[1].trim() || uid;
+    const email = match[2] || '';
+    const fp    = key.getFingerprint().toUpperCase().match(/.{4}/g).join(' ');
+
+    if (state.contactKeys.find(k => k.fingerprint === fp)) {
+      resEl.innerHTML = alertHTML('warn','This key is already in your ring.'); return;
+    }
+
+    state.contactKeys.push({ name, email, fingerprint: fp, armoredPublic: pem });
+    await dbSet('contactKeys', state.contactKeys);
+
+    document.getElementById('addKeyPem').value = '';
+    resEl.innerHTML = alertHTML('ok',`✓ Added: ${name} &lt;${email}&gt;`);
+    renderKeyList();
+    populateRecipientSelect();
+  } catch(e) {
+    resEl.innerHTML = alertHTML('err', `Could not parse key: ${e.message}`);
+  }
+}
+
+function renderKeyList() {
+  const list = document.getElementById('keyList');
+  if (state.contactKeys.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:16px 0">No keys yet. Add a contact\'s public key above.</div>';
+    return;
+  }
+  list.innerHTML = state.contactKeys.map((k,i) => `
+    <div class="key-row">
+      <div class="avatar">${k.name[0]?.toUpperCase() || '?'}</div>
+      <div>
+        <div class="kname">${escapeHtml(k.name)}</div>
+        <div class="kemail">${escapeHtml(k.email)}</div>
+        <div class="kfp">${k.fingerprint}</div>
+      </div>
+      <div class="kactions">
+        <button class="btn ghost" style="width:auto;padding:6px 12px;font-size:12px"
+          onclick="exportContactKey(${i})">Export</button>
+        <button class="btn" style="width:auto;padding:6px 12px;font-size:12px;border-color:var(--rust);color:var(--rust)"
+          onclick="removeContactKey(${i})">Remove</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function removeContactKey(i) {
+  state.contactKeys.splice(i,1);
+  dbSet('contactKeys', state.contactKeys);
+  renderKeyList();
+  populateRecipientSelect();
+}
+
+function exportContactKey(i) {
+  const k = state.contactKeys[i];
+  download(k.armoredPublic, `${k.email || 'key'}-public.asc`, 'text/plain');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export public key
+// ─────────────────────────────────────────────────────────────────────────────
+async function exportMyPublicKey() {
+  if (!state.myPublicKey) { alert('No key loaded.'); return; }
+  const armored = state.myPublicKey.armor();
+  download(armored, `${state.myKeyInfo?.email || 'my'}-public.asc`, 'text/plain');
+}
+
+function download(content, filename, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = filename;
+  a.click();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Copy
+// ─────────────────────────────────────────────────────────────────────────────
+function copyBox(id) {
+  const el = document.getElementById(id);
+  const text = el.innerText.replace('Copy','').trim();
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = el.querySelector('.copy-btn');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(()=>btn.textContent='Copy',1500); }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clear panels
+// ─────────────────────────────────────────────────────────────────────────────
+function clearCompose() {
+  document.getElementById('plaintextInput').value = '';
+  document.getElementById('ciphertextBox').innerHTML = '<span class="placeholder">Encrypted message will appear here…</span><button class="copy-btn" onclick="copyBox(\'ciphertextBox\')">Copy</button>';
+  document.getElementById('encryptResult').innerHTML = '';
+  recipients = [];
+  renderRecipients();
+  populateRecipientSelect();
+}
+
+function clearDecrypt() {
+  document.getElementById('ciphertextInput').value = '';
+  document.getElementById('plaintextBox').innerHTML = '<span class="placeholder">Decrypted message will appear here…</span><button class="copy-btn" onclick="copyBox(\'plaintextBox\')">Copy</button>';
+  document.getElementById('decryptResult').innerHTML = '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Update key badge in header
+// ─────────────────────────────────────────────────────────────────────────────
+function updateKeyBadge() {
+  const badge = document.getElementById('keyBadge');
+  const text  = document.getElementById('keyBadgeText');
+  if (state.myKeyInfo) {
+    badge.classList.add('armed');
+    text.textContent = state.myKeyInfo.email || state.myKeyInfo.name;
+    document.getElementById('myKeyCard').classList.add('visible');
+    document.getElementById('myKeyName').textContent = state.myKeyInfo.name;
+    document.getElementById('myKeyFp').textContent   = state.myKeyInfo.fingerprint;
+  } else {
+    badge.classList.remove('armed');
+    text.textContent = 'No key loaded';
+    document.getElementById('myKeyCard').classList.remove('visible');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init — load state from IndexedDB
+// ─────────────────────────────────────────────────────────────────────────────
+async function init() {
+  db = await openDB();
+
+  const credIdArr   = await dbGet('credentialId');
+  const sealedKey   = await dbGet('sealedKey');
+  const armoredPub  = await dbGet('publicKey');
+  const keyInfo     = await dbGet('keyInfo');
+  const contactKeys = await dbGet('contactKeys');
+
+  if (credIdArr)   { state.credentialId = new Uint8Array(credIdArr); state.registered = true; }
+  if (sealedKey)   { state.sealedKey  = sealedKey; }
+  if (keyInfo)     { state.myKeyInfo  = keyInfo; }
+  if (contactKeys) { state.contactKeys = contactKeys; }
+
+  if (armoredPub) {
+    try {
+      state.myPublicKey = await openpgp.readKey({ armoredKey: armoredPub });
+    } catch(_) {}
+  }
+
+  updateKeyBadge();
+
+  // If already set up, go to compose
+  if (state.myPublicKey && state.credentialId) {
+    showPanel('compose');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
